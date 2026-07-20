@@ -4,7 +4,6 @@
     "slug": "media-forwarder",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/icon.png",
@@ -17,15 +16,11 @@
       "bundleIdentifier": "com.yourcompany.mediaforwarder"
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
       "package": "com.yourcompany.mediaforwarder"
     },
     "extra": {
       "eas": {
-        "projectId": "your-eas-project-id"
+        "projectId": "7b8b67c7-89f2-4de3-a146-0712cb27d46b"
       }
     }
   }
