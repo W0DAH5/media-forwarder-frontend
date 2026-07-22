@@ -21,48 +21,17 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      # Install Expo and EAS globally so they are available in PATH
-      - name: Install Expo and EAS CLI globally
-        run: |
-          npm install -g expo-cli
-          npm install -g eas-cli
-
-      # Only used for authentication (token), no need to install with yarn
-      - name: Setup Expo authentication
-        uses: expo/expo-github-action@v8
-        with:
-          token: ${{ secrets.EXPO_TOKEN }}
-          packager: npm
-
-      - name: Ensure eas.json exists
-        run: |
-          if [ ! -f eas.json ]; then
-            cat > eas.json << 'EOF'
-          {
-            "cli": {
-              "version": ">= 3.0.0"
-            },
-            "build": {
-              "production": {
-                "android": {
-                  "buildType": "apk"
-                }
-              }
-            }
-          }
-          EOF
-          fi
-
       - name: Prebuild Android
-        run: expo prebuild --platform android --clean
+        run: npx expo prebuild --platform android --clean
 
-      - name: Build APK
-        run: eas build -p android --profile production --non-interactive
+      - name: Build APK with Gradle
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleRelease
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: |
-            build-*.apk
-            android/app/build/outputs/apk/release/*.apk
+          path: android/app/build/outputs/apk/release/app-release.apk
