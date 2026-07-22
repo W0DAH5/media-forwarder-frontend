@@ -30,3 +30,9 @@ export const testConnection = async (url, token) => {
     return false;
   }
 };
+
+// NEW: Fetch Telegram dialogs for source selection
+export const getTelegramDialogs = async () => {
+  const res = await apiCall('/api/discovery/telegram?limit=500');
+  return res.items || [];
+};
