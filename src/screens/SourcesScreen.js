@@ -52,7 +52,7 @@ export default function SourcesScreen({ navigation }) {
     }
   };
 
-  // ---------- Telegram multi‑add (FIXED: uses chat.id) ----------
+  // ---------- Telegram multi‑add (with skip & summary) ----------
   const toggleChatSelection = (id) => {
     setSelectedChats((prev) => ({ ...prev, [id]: !prev[id] }));
   };
@@ -64,20 +64,44 @@ export default function SourcesScreen({ navigation }) {
       return;
     }
     setLoading(true);
+    let added = 0;
+    let skipped = [];
     try {
-      const sourcesToAdd = selectedIds.map((id) => {
+      for (const id of selectedIds) {
         const chat = telegramChats.find((c) => c.id === id);
-        return {
-          platform: 'telegram',
-          channel_id: chat.id,           // ✅ FIX: use numeric chat.id
-          filters: { username: chat.username },
-          forwarding_method: 'auto',
-        };
-      });
-      for (const src of sourcesToAdd) {
-        await apiCall('/api/sources', 'POST', src);
+        if (!chat) {
+          skipped.push(`ID ${id} (not found in list)`);
+          continue;
+        }
+        // Try ID, then username, then input
+        let channelId = chat.id;
+        if (!channelId && chat.username) {
+          channelId = `@${chat.username}`;
+        }
+        if (!channelId && chat.input) {
+          channelId = chat.input;
+        }
+        if (!channelId) {
+          skipped.push(`${chat.name || 'Unknown'} (no valid identifier)`);
+          continue;
+        }
+        try {
+          await apiCall('/api/sources', 'POST', {
+            platform: 'telegram',
+            channel_id: channelId,
+            filters: { username: chat.username || '' },
+            forwarding_method: 'auto',
+          });
+          added++;
+        } catch (e) {
+          skipped.push(`${chat.name || channelId} (API error: ${e.message})`);
+        }
       }
-      Alert.alert(`Added ${sourcesToAdd.length} sources`);
+      let msg = `Added ${added} sources.`;
+      if (skipped.length > 0) {
+        msg += `\nSkipped ${skipped.length}: ${skipped.join(', ')}`;
+      }
+      Alert.alert('Result', msg);
       setSelectedChats({});
       setShowChatPicker(false);
       loadSources();
@@ -132,14 +156,26 @@ export default function SourcesScreen({ navigation }) {
     setDiscordStartDate(`${year}-${month}-${day}`);
   };
 
-  // ---------- Destination (FIXED: uses chat.id) ----------
+  // ---------- Destination (with fallback) ----------
   const setDestination = async () => {
     if (!selectedDest) {
       Alert.alert('Please select a destination');
       return;
     }
+    const chat = telegramChats.find((c) => c.id === selectedDest);
+    let destId = selectedDest;
+    if (!destId && chat?.username) {
+      destId = `@${chat.username}`;
+    }
+    if (!destId && chat?.input) {
+      destId = chat.input;
+    }
+    if (!destId) {
+      Alert.alert('Error', 'Selected destination has no valid identifier');
+      return;
+    }
     try {
-      await apiCall('/api/destination', 'POST', { channel_id: selectedDest }); // ✅ FIX: numeric chat.id
+      await apiCall('/api/destination', 'POST', { channel_id: destId });
       Alert.alert('Destination updated');
       setShowDestPicker(false);
       navigation.goBack();
@@ -187,7 +223,7 @@ export default function SourcesScreen({ navigation }) {
         contentContainerStyle={styles.list}
       />
 
-      {/* ---------- Telegram Chat Picker Modal ---------- */}
+      {/* Telegram Chat Picker Modal */}
       <Modal visible={showChatPicker} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modal}>
@@ -214,7 +250,7 @@ export default function SourcesScreen({ navigation }) {
         </View>
       </Modal>
 
-      {/* ---------- Discord Multi‑Add Modal ---------- */}
+      {/* Discord Multi‑Add Modal */}
       <Modal visible={showDiscordModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modal}>
@@ -258,7 +294,7 @@ export default function SourcesScreen({ navigation }) {
         </View>
       </Modal>
 
-      {/* ---------- Destination Picker Modal ---------- */}
+      {/* Destination Picker Modal */}
       <Modal visible={showDestPicker} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modal}>
@@ -267,7 +303,7 @@ export default function SourcesScreen({ navigation }) {
               {telegramChats.map((chat) => (
                 <TouchableOpacity
                   key={chat.id}
-                  onPress={() => setSelectedDest(chat.id)}   // ✅ FIX: use chat.id
+                  onPress={() => setSelectedDest(chat.id)}
                   style={styles.chatItem}
                 >
                   <Text>
