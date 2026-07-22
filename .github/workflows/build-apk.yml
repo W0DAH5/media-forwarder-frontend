@@ -21,13 +21,18 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
-      - name: Setup Expo / EAS
+      # Install Expo and EAS globally so they are available in PATH
+      - name: Install Expo and EAS CLI globally
+        run: |
+          npm install -g expo-cli
+          npm install -g eas-cli
+
+      # Only used for authentication (token), no need to install with yarn
+      - name: Setup Expo authentication
         uses: expo/expo-github-action@v8
         with:
-          expo-version: latest
-          eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
-          packager: npm   # <-- THIS FIXES THE YARN ERROR
+          packager: npm
 
       - name: Ensure eas.json exists
         run: |
@@ -49,10 +54,10 @@ jobs:
           fi
 
       - name: Prebuild Android
-        run: npx expo prebuild --platform android --clean
+        run: expo prebuild --platform android --clean
 
       - name: Build APK
-        run: npx eas build -p android --profile production --non-interactive
+        run: eas build -p android --profile production --non-interactive
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
