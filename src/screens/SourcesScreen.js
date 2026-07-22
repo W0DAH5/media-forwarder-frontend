@@ -52,7 +52,7 @@ export default function SourcesScreen({ navigation }) {
     }
   };
 
-  // ---------- Telegram multi‑add ----------
+  // ---------- Telegram multi‑add (FIXED: uses chat.id) ----------
   const toggleChatSelection = (id) => {
     setSelectedChats((prev) => ({ ...prev, [id]: !prev[id] }));
   };
@@ -69,7 +69,7 @@ export default function SourcesScreen({ navigation }) {
         const chat = telegramChats.find((c) => c.id === id);
         return {
           platform: 'telegram',
-          channel_id: chat.input,
+          channel_id: chat.id,           // ✅ FIX: use numeric chat.id
           filters: { username: chat.username },
           forwarding_method: 'auto',
         };
@@ -132,14 +132,14 @@ export default function SourcesScreen({ navigation }) {
     setDiscordStartDate(`${year}-${month}-${day}`);
   };
 
-  // ---------- Destination ----------
+  // ---------- Destination (FIXED: uses chat.id) ----------
   const setDestination = async () => {
     if (!selectedDest) {
       Alert.alert('Please select a destination');
       return;
     }
     try {
-      await apiCall('/api/destination', 'POST', { channel_id: selectedDest });
+      await apiCall('/api/destination', 'POST', { channel_id: selectedDest }); // ✅ FIX: numeric chat.id
       Alert.alert('Destination updated');
       setShowDestPicker(false);
       navigation.goBack();
@@ -267,13 +267,13 @@ export default function SourcesScreen({ navigation }) {
               {telegramChats.map((chat) => (
                 <TouchableOpacity
                   key={chat.id}
-                  onPress={() => setSelectedDest(chat.input)}
+                  onPress={() => setSelectedDest(chat.id)}   // ✅ FIX: use chat.id
                   style={styles.chatItem}
                 >
                   <Text>
                     {chat.name} {chat.username ? `(@${chat.username})` : ''}
                   </Text>
-                  <Text>{selectedDest === chat.input ? '✅' : ''}</Text>
+                  <Text>{selectedDest === chat.id ? '✅' : ''}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
