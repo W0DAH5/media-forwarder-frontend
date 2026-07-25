@@ -11,6 +11,7 @@ import {
   TextInput,
   ScrollView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { apiCall, getTelegramDialogs } from '../api/client';
@@ -24,6 +25,7 @@ export default function SourcesScreen({ navigation }) {
   const [showDestPicker, setShowDestPicker] = useState(false);
   const [selectedDest, setSelectedDest] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Discord multi‑add modal
   const [showDiscordModal, setShowDiscordModal] = useState(false);
@@ -39,41 +41,76 @@ export default function SourcesScreen({ navigation }) {
   }, []);
 
   const loadSources = async () => {
-    const res = await apiCall('/api/sources');
-    setSources(res.sources || []);
-  };
-
-  const loadTelegramChats = async () => {
     try {
-      const items = await getTelegramDialogs();
-      setTelegramChats(items);
+      const res = await apiCall('/api/sources');
+      setSources(res.sources || []);
     } catch (e) {
-      Alert.alert('Error', 'Could not load Telegram chats');
+      console.error('loadSources error:', e);
     }
   };
 
-  // ---------- Telegram multi‑add (with skip & summary) ----------
+  const loadTelegramChats = async () => {
+    setRefreshing(true);
+    try {
+      const items = await getTelegramDialogs();
+      console.log(`Loaded ${items.length} Telegram chats`);
+      setTelegramChats(items);
+      // Reset selections when list reloads
+      setSelectedChats({});
+    } catch (e) {
+      console.error('loadTelegramChats error:', e);
+      Alert.alert('Error', 'Could not load Telegram chats. Check your connection.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // ---------- Telegram multi‑add ----------
   const toggleChatSelection = (id) => {
-    setSelectedChats((prev) => ({ ...prev, [id]: !prev[id] }));
+    setSelectedChats((prev) => {
+      const newState = { ...prev, [id]: !prev[id] };
+      console.log('selectedChats updated:', newState);
+      return newState;
+    });
   };
 
   const addSelectedTelegramSources = async () => {
+    console.log('addSelectedTelegramSources called');
+    console.log('selectedChats:', selectedChats);
+    console.log('telegramChats length:', telegramChats.length);
+
     const selectedIds = Object.keys(selectedChats).filter((id) => selectedChats[id]);
+    console.log('selectedIds:', selectedIds);
+
     if (selectedIds.length === 0) {
       Alert.alert('Select at least one chat');
       return;
     }
+
+    // If telegramChats is empty, try reloading
+    if (telegramChats.length === 0) {
+      Alert.alert('Reloading chats...', 'Please wait, fetching your chats again.');
+      await loadTelegramChats();
+      if (telegramChats.length === 0) {
+        Alert.alert('Still no chats found. Please check your connection.');
+        return;
+      }
+    }
+
     setLoading(true);
     let added = 0;
     let skipped = [];
+
     try {
       for (const id of selectedIds) {
+        // Find the chat object
         const chat = telegramChats.find((c) => c.id === id);
         if (!chat) {
-          skipped.push(`ID ${id} (not found in list)`);
+          skipped.push(`ID ${id} (not found in current list)`);
           continue;
         }
-        // Fallback logic for channel identifier
+
+        // Determine best identifier: id, then @username, then input
         let channelId = chat.id;
         if (!channelId && chat.username) {
           channelId = `@${chat.username}`;
@@ -85,6 +122,7 @@ export default function SourcesScreen({ navigation }) {
           skipped.push(`${chat.name || 'Unknown'} (no valid identifier)`);
           continue;
         }
+
         console.log(`Sending channel_id: ${channelId} for chat: ${chat.name}`);
         try {
           await apiCall('/api/sources', 'POST', {
@@ -98,15 +136,20 @@ export default function SourcesScreen({ navigation }) {
           skipped.push(`${chat.name || channelId} (API error: ${e.message})`);
         }
       }
+
       let msg = `Added ${added} sources.`;
       if (skipped.length > 0) {
         msg += `\nSkipped ${skipped.length}: ${skipped.join(', ')}`;
       }
       Alert.alert('Result', msg);
+
+      // Clear selections and close modal
       setSelectedChats({});
       setShowChatPicker(false);
-      loadSources();
+      // Reload sources
+      await loadSources();
     } catch (e) {
+      console.error('addSelectedTelegramSources error:', e);
       Alert.alert('Error', e.message);
     } finally {
       setLoading(false);
@@ -139,7 +182,7 @@ export default function SourcesScreen({ navigation }) {
       setDiscordStartDate('');
       setDiscordMethod('auto');
       setShowDiscordModal(false);
-      loadSources();
+      await loadSources();
     } catch (e) {
       Alert.alert('Error', e.message);
     } finally {
@@ -157,7 +200,7 @@ export default function SourcesScreen({ navigation }) {
     setDiscordStartDate(`${year}-${month}-${day}`);
   };
 
-  // ---------- Destination (with fallback) ----------
+  // ---------- Destination ----------
   const setDestination = async () => {
     if (!selectedDest) {
       Alert.alert('Please select a destination');
@@ -190,7 +233,7 @@ export default function SourcesScreen({ navigation }) {
       source={item}
       onToggle={async (id, enable) => {
         await apiCall(`/api/sources/${id}/${enable ? 'enable' : 'disable'}`, 'POST');
-        loadSources();
+        await loadSources();
       }}
       onRemove={async (id) => {
         Alert.alert('Confirm', 'Remove source?', [
@@ -200,7 +243,7 @@ export default function SourcesScreen({ navigation }) {
             style: 'destructive',
             onPress: async () => {
               await apiCall(`/api/sources/${id}`, 'DELETE');
-              loadSources();
+              await loadSources();
             },
           },
         ]);
@@ -214,7 +257,10 @@ export default function SourcesScreen({ navigation }) {
         <Button title="➕ Add Telegram Chats" onPress={() => setShowChatPicker(true)} />
         <Button title="📌 Set Destination" onPress={() => setShowDestPicker(true)} />
         <Button title="➕ Add Discord Channels" onPress={() => setShowDiscordModal(true)} />
+        <Button title="🔄 Refresh Chats" onPress={loadTelegramChats} />
       </View>
+
+      {refreshing && <ActivityIndicator size="large" color="#007AFF" />}
 
       <FlatList
         data={sources}
@@ -229,20 +275,27 @@ export default function SourcesScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modal}>
             <Text style={styles.modalTitle}>Select Telegram Chats</Text>
-            <ScrollView>
-              {telegramChats.map((chat) => (
-                <TouchableOpacity
-                  key={chat.id}
-                  onPress={() => toggleChatSelection(chat.id)}
-                  style={styles.chatItem}
-                >
-                  <Text>
-                    {chat.name} {chat.username ? `(@${chat.username})` : ''}
-                  </Text>
-                  <Text>{selectedChats[chat.id] ? '✅' : '⬜'}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            {telegramChats.length === 0 ? (
+              <View style={{ padding: 20 }}>
+                <Text>No chats loaded. Tap refresh.</Text>
+                <Button title="Refresh" onPress={loadTelegramChats} />
+              </View>
+            ) : (
+              <ScrollView>
+                {telegramChats.map((chat) => (
+                  <TouchableOpacity
+                    key={chat.id}
+                    onPress={() => toggleChatSelection(chat.id)}
+                    style={styles.chatItem}
+                  >
+                    <Text style={{ flex: 1 }}>
+                      {chat.name} {chat.username ? `(@${chat.username})` : ''}
+                    </Text>
+                    <Text>{selectedChats[chat.id] ? '✅' : '⬜'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
             <View style={styles.modalButtons}>
               <Button title="Cancel" onPress={() => setShowChatPicker(false)} />
               <Button title="Add Selected" onPress={addSelectedTelegramSources} disabled={loading} />
@@ -307,7 +360,7 @@ export default function SourcesScreen({ navigation }) {
                   onPress={() => setSelectedDest(chat.id)}
                   style={styles.chatItem}
                 >
-                  <Text>
+                  <Text style={{ flex: 1 }}>
                     {chat.name} {chat.username ? `(@${chat.username})` : ''}
                   </Text>
                   <Text>{selectedDest === chat.id ? '✅' : ''}</Text>
