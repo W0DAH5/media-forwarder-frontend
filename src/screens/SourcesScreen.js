@@ -73,7 +73,7 @@ export default function SourcesScreen({ navigation }) {
           skipped.push(`ID ${id} (not found in list)`);
           continue;
         }
-        // Try ID, then username, then input
+        // Fallback logic for channel identifier
         let channelId = chat.id;
         if (!channelId && chat.username) {
           channelId = `@${chat.username}`;
@@ -85,6 +85,7 @@ export default function SourcesScreen({ navigation }) {
           skipped.push(`${chat.name || 'Unknown'} (no valid identifier)`);
           continue;
         }
+        console.log(`Sending channel_id: ${channelId} for chat: ${chat.name}`);
         try {
           await apiCall('/api/sources', 'POST', {
             platform: 'telegram',
