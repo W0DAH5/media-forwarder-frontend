@@ -35,6 +35,13 @@ export default function SourcesScreen({ navigation }) {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState(new Date());
 
+  // Backfill modal states
+  const [showBackfillModal, setShowBackfillModal] = useState(false);
+  const [backfillLoading, setBackfillLoading] = useState(false);
+  const [backfillPlatform, setBackfillPlatform] = useState('telegram');
+  const [backfillSource, setBackfillSource] = useState('');
+  const [backfillLimit, setBackfillLimit] = useState('100');
+
   useEffect(() => {
     loadSources();
     loadTelegramChats();
@@ -55,7 +62,6 @@ export default function SourcesScreen({ navigation }) {
       const items = await getTelegramDialogs();
       console.log(`Loaded ${items.length} Telegram chats`);
       setTelegramChats(items);
-      // Reset selections when list reloads
       setSelectedChats({});
     } catch (e) {
       console.error('loadTelegramChats error:', e);
@@ -75,19 +81,12 @@ export default function SourcesScreen({ navigation }) {
   };
 
   const addSelectedTelegramSources = async () => {
-    console.log('addSelectedTelegramSources called');
-    console.log('selectedChats:', selectedChats);
-    console.log('telegramChats length:', telegramChats.length);
-
     const selectedIds = Object.keys(selectedChats).filter((id) => selectedChats[id]);
-    console.log('selectedIds:', selectedIds);
-
     if (selectedIds.length === 0) {
       Alert.alert('Select at least one chat');
       return;
     }
 
-    // If telegramChats is empty, try reloading
     if (telegramChats.length === 0) {
       Alert.alert('Reloading chats...', 'Please wait, fetching your chats again.');
       await loadTelegramChats();
@@ -103,14 +102,12 @@ export default function SourcesScreen({ navigation }) {
 
     try {
       for (const id of selectedIds) {
-        // Find the chat object
         const chat = telegramChats.find((c) => c.id === id);
         if (!chat) {
           skipped.push(`ID ${id} (not found in current list)`);
           continue;
         }
 
-        // Determine best identifier: id, then @username, then input
         let channelId = chat.id;
         if (!channelId && chat.username) {
           channelId = `@${chat.username}`;
@@ -142,11 +139,8 @@ export default function SourcesScreen({ navigation }) {
         msg += `\nSkipped ${skipped.length}: ${skipped.join(', ')}`;
       }
       Alert.alert('Result', msg);
-
-      // Clear selections and close modal
       setSelectedChats({});
       setShowChatPicker(false);
-      // Reload sources
       await loadSources();
     } catch (e) {
       console.error('addSelectedTelegramSources error:', e);
@@ -228,6 +222,40 @@ export default function SourcesScreen({ navigation }) {
     }
   };
 
+  // ---------- Backfill ----------
+  const startBackfill = async () => {
+    if (!backfillSource.trim()) {
+      Alert.alert('Please enter a source (channel ID or username)');
+      return;
+    }
+
+    const limitNum = parseInt(backfillLimit, 10);
+    if (isNaN(limitNum) || limitNum <= 0) {
+      Alert.alert('Enter a valid positive limit');
+      return;
+    }
+
+    setBackfillLoading(true);
+    try {
+      const response = await apiCall('/api/backfill', 'POST', {
+        platform: backfillPlatform,
+        source: backfillSource.trim(),
+        limit: limitNum,
+      });
+      Alert.alert(
+        'Backfill Started',
+        `Task ID: ${response.task_id}\nProcessing up to ${limitNum} messages.`
+      );
+      setShowBackfillModal(false);
+      setBackfillSource('');
+      setBackfillLimit('100');
+    } catch (e) {
+      Alert.alert('Error', e.message);
+    } finally {
+      setBackfillLoading(false);
+    }
+  };
+
   const renderSource = ({ item }) => (
     <SourceCard
       source={item}
@@ -258,6 +286,11 @@ export default function SourcesScreen({ navigation }) {
         <Button title="📌 Set Destination" onPress={() => setShowDestPicker(true)} />
         <Button title="➕ Add Discord Channels" onPress={() => setShowDiscordModal(true)} />
         <Button title="🔄 Refresh Chats" onPress={loadTelegramChats} />
+        <Button
+          title="🔄 Backfill"
+          onPress={() => setShowBackfillModal(true)}
+          color="#841584"
+        />
       </View>
 
       {refreshing && <ActivityIndicator size="large" color="#007AFF" />}
@@ -374,6 +407,69 @@ export default function SourcesScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* Backfill Modal */}
+      <Modal visible={showBackfillModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>Backfill Messages</Text>
+            <View style={styles.formGroup}>
+              <Text>Platform</Text>
+              <View style={styles.platformRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.platformBtn,
+                    backfillPlatform === 'telegram' && styles.platformBtnActive,
+                  ]}
+                  onPress={() => setBackfillPlatform('telegram')}
+                >
+                  <Text style={styles.platformBtnText}>Telegram</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.platformBtn,
+                    backfillPlatform === 'discord' && styles.platformBtnActive,
+                  ]}
+                  onPress={() => setBackfillPlatform('discord')}
+                >
+                  <Text style={styles.platformBtnText}>Discord</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text>Source (channel ID or @username)</Text>
+              <TextInput
+                style={styles.input}
+                value={backfillSource}
+                onChangeText={setBackfillSource}
+                placeholder="e.g. -1001805766774 or @channelname"
+              />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text>Limit</Text>
+              <TextInput
+                style={styles.input}
+                value={backfillLimit}
+                onChangeText={setBackfillLimit}
+                placeholder="100"
+                keyboardType="numeric"
+              />
+            </View>
+
+            <View style={styles.modalButtons}>
+              <Button title="Cancel" onPress={() => setShowBackfillModal(false)} />
+              <Button
+                title="Start Backfill"
+                onPress={startBackfill}
+                disabled={backfillLoading}
+                color="#841584"
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -407,4 +503,17 @@ const styles = StyleSheet.create({
   dateButton: { backgroundColor: '#007AFF', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 4, marginRight: 8 },
   dateButtonText: { color: 'white', fontWeight: 'bold' },
   dateDisplay: { flex: 1, fontSize: 14, color: '#333' },
+  // Backfill specific styles
+  formGroup: { marginBottom: 16 },
+  platformRow: { flexDirection: 'row', gap: 12, marginVertical: 8 },
+  platformBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#eee',
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  platformBtnActive: { backgroundColor: '#841584' },
+  platformBtnText: { fontSize: 14, fontWeight: '600', color: '#333' },
 });
