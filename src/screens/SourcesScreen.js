@@ -32,6 +32,7 @@ export default function SourcesScreen({ navigation }) {
   const [discordIdsInput, setDiscordIdsInput] = useState('');
   const [discordStartDate, setDiscordStartDate] = useState('');
   const [discordMethod, setDiscordMethod] = useState('auto');
+  const [discordGuildId, setDiscordGuildId] = useState('');          // new
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [tempDate, setTempDate] = useState(new Date());
 
@@ -165,16 +166,21 @@ export default function SourcesScreen({ navigation }) {
       const sourcesToAdd = ids.map((id) => ({
         platform: 'discord',
         channel_id: id,
-        filters: { forwarding_method: discordMethod },
+        filters: {
+          forwarding_method: discordMethod,
+          guild_id: discordGuildId.trim()  // include server ID if provided
+        },
         start_date: discordStartDate || null,
       }));
       for (const src of sourcesToAdd) {
         await apiCall('/api/sources', 'POST', src);
       }
       Alert.alert(`Added ${sourcesToAdd.length} Discord channels`);
+      // reset all fields
       setDiscordIdsInput('');
       setDiscordStartDate('');
       setDiscordMethod('auto');
+      setDiscordGuildId('');
       setShowDiscordModal(false);
       await loadSources();
     } catch (e) {
@@ -352,6 +358,13 @@ export default function SourcesScreen({ navigation }) {
               placeholder="1510278627990966544, 1510278875677200555, ..."
               value={discordIdsInput}
               onChangeText={setDiscordIdsInput}
+            />
+            {/* Server ID input */}
+            <TextInput
+              style={styles.input}
+              placeholder="Server ID (optional)"
+              value={discordGuildId}
+              onChangeText={setDiscordGuildId}
             />
             <View style={styles.row}>
               <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateButton}>
